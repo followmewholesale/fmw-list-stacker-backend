@@ -17,14 +17,17 @@ const PORT = process.env.PORT || 3001;
 // ================================
 const WHOP_CLIENT_ID = process.env.WHOP_CLIENT_ID;
 const WHOP_CLIENT_SECRET = process.env.WHOP_CLIENT_SECRET;
+
+// ✅ Render OAuth callback
 const WHOP_REDIRECT_URI =
-  process.env.WHOP_REDIRECT_URI || "http://localhost:3001/api/oauth/callback";
+  process.env.WHOP_REDIRECT_URI ||
+  "https://fmw-list-stacker-backend.onrender.com/api/oauth/callback";
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL || "https://fmw-liststackertool.netlify.app";
 
 if (!WHOP_CLIENT_ID || !WHOP_CLIENT_SECRET) {
-  console.error("❌ Missing Whop client credentials in .env");
+  console.error("❌ Missing Whop client credentials in environment variables");
   process.exit(1);
 }
 
@@ -55,6 +58,20 @@ app.get("/", (req, res) => {
 });
 
 // ================================
+// 🔑 START WHOP OAUTH FLOW
+// ================================
+app.get("/api/oauth/start", (req, res) => {
+  const params = new URLSearchParams({
+    client_id: WHOP_CLIENT_ID,
+    redirect_uri: WHOP_REDIRECT_URI,
+    response_type: "code",
+    scope: "user.products",
+  });
+
+  res.redirect(`https://whop.com/oauth/authorize?${params.toString()}`);
+});
+
+// ================================
 // WHOP OAUTH CALLBACK
 // ================================
 app.get("/api/oauth/callback", async (req, res) => {
@@ -65,9 +82,7 @@ app.get("/api/oauth/callback", async (req, res) => {
   }
 
   try {
-    /* --------------------------------
-       1️⃣ Exchange code → access token
-    --------------------------------- */
+    // 1️⃣ Exchange code → access token
     const tokenRes = await fetch("https://api.whop.com/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -83,15 +98,13 @@ app.get("/api/oauth/callback", async (req, res) => {
     const tokenData = await tokenRes.json();
 
     if (!tokenData.access_token) {
-      console.error("❌ Token response:", tokenData);
+      console.error("❌ Token error:", tokenData);
       throw new Error("No access token returned from Whop");
     }
 
     const accessToken = tokenData.access_token;
 
-    /* --------------------------------
-       2️⃣ Fetch entitlements (CORRECT)
-    --------------------------------- */
+    // 2️⃣ Fetch entitlements
     const entitlementsRes = await fetch(
       "https://api.whop.com/api/v2/me/entitlements",
       {
@@ -104,22 +117,18 @@ app.get("/api/oauth/callback", async (req, res) => {
     const entitlementsData = await entitlementsRes.json();
 
     if (!Array.isArray(entitlementsData?.data)) {
-      console.error("❌ Entitlements response:", entitlementsData);
+      console.error("❌ Invalid entitlements response:", entitlementsData);
       throw new Error("Invalid entitlements response");
     }
 
-    /* --------------------------------
-       3️⃣ Check product access
-    --------------------------------- */
+    // 3️⃣ Check product access
     const hasAccess = entitlementsData.data.some(
       (entitlement) =>
         entitlement?.product?.id &&
         ALLOWED_PRODUCT_IDS.includes(entitlement.product.id)
     );
 
-    /* --------------------------------
-       4️⃣ Redirect back to frontend
-    --------------------------------- */
+    // 4️⃣ Redirect back to frontend
     return res.redirect(
       `${FRONTEND_URL}?access=${hasAccess ? "granted" : "denied"}`
     );
@@ -133,5 +142,5 @@ app.get("/api/oauth/callback", async (req, res) => {
 // START SERVER
 // ================================
 app.listen(PORT, () => {
-  console.log(`✅ FMW Backend running on http://localhost:${PORT}`);
+  console.log(`✅ FMW Backend running on port ${PORT}`);
 });
