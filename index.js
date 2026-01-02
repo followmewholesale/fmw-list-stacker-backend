@@ -18,7 +18,7 @@ const PORT = process.env.PORT || 3001;
 // ================================
 const WHOP_CLIENT_ID = process.env.WHOP_CLIENT_ID;
 const WHOP_CLIENT_SECRET = process.env.WHOP_CLIENT_SECRET;
-const OWNER_WHOP_EMAIL = process.env.OWNER_WHOP_EMAIL;
+const OWNER_WHOP_EMAIL = process.env.OWNER_WHOP_EMAIL?.toLowerCase();
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL || "https://fmw-liststackertool.netlify.app";
@@ -62,18 +62,15 @@ app.get("/", (_, res) => {
 
 // ================================
 // 🔐 AUTH CHECK (COOKIE-BASED)
-// Frontend calls this on load
 // ================================
 app.get("/api/auth/check", (req, res) => {
-  const hasAccess = req.cookies?.fmw_access === "1";
-  res.json({ authenticated: hasAccess });
+  res.json({ authenticated: req.cookies?.fmw_access === "1" });
 });
 
 // ================================
-// 🔐 FINALIZE SESSION (FIRST-PARTY COOKIE SET)
-// Called AFTER OAuth redirect
+// 🔐 FINALIZE SESSION (FIRST-PARTY COOKIE)
 // ================================
-app.post("/api/auth/session", (req, res) => {
+app.post("/api/auth/session", (_, res) => {
   res.cookie("fmw_access", "1", {
     httpOnly: true,
     secure: true,
@@ -100,17 +97,16 @@ app.get("/api/oauth/start", (_, res) => {
 });
 
 // ================================
-// 🔁 OAUTH CALLBACK (OWNER BYPASS)
+// 🔁 OAUTH CALLBACK (SAFE + OWNER BYPASS)
 // ================================
 app.get("/api/oauth/callback", async (req, res) => {
   const { code } = req.query;
-
-  if (!code) {
-    return res.redirect(`${FRONTEND_URL}/login.html`);
-  }
+  if (!code) return res.redirect(`${FRONTEND_URL}/login.html`);
 
   try {
-    // 1️⃣ Exchange code → access token
+    // ----------------------------
+    // 1️⃣ TOKEN EXCHANGE (SAFE)
+    // ----------------------------
     const tokenRes = await fetch("https://api.whop.com/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -123,63 +119,81 @@ app.get("/api/oauth/callback", async (req, res) => {
       }),
     });
 
-    const tokenData = await tokenRes.json();
-    if (!tokenData.access_token) {
-      throw new Error("No access token returned");
+    const tokenText = await tokenRes.text();
+    if (!tokenText) throw new Error("Empty token response");
+
+    let tokenData;
+    try {
+      tokenData = JSON.parse(tokenText);
+    } catch {
+      throw new Error("Invalid token JSON");
     }
 
-    const userAccessToken = tokenData.access_token;
+    const accessToken = tokenData.access_token;
+    if (!accessToken) throw new Error("No access token");
 
-    // 2️⃣ Fetch user profile
+    // ----------------------------
+    // 2️⃣ FETCH USER PROFILE
+    // ----------------------------
     const userRes = await fetch("https://api.whop.com/api/v2/me", {
-      headers: {
-        Authorization: `Bearer ${userAccessToken}`,
-      },
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    const userData = await userRes.json();
+    const userText = await userRes.text();
+    if (!userText) throw new Error("Empty user response");
+
+    let userData;
+    try {
+      userData = JSON.parse(userText);
+    } catch {
+      throw new Error("Invalid user JSON");
+    }
+
     const userEmail = userData?.email?.toLowerCase();
 
-    // ================================
+    // ----------------------------
     // ✅ OWNER BYPASS
-    // ================================
-    if (userEmail === OWNER_WHOP_EMAIL.toLowerCase()) {
-      return res.redirect(
-        `${FRONTEND_URL}/index.html?session=success`
-      );
+    // ----------------------------
+    if (userEmail === OWNER_WHOP_EMAIL) {
+      return res.redirect(`${FRONTEND_URL}/index.html?session=success`);
     }
 
-    // 3️⃣ Fetch entitlements (customers)
+    // ----------------------------
+    // 3️⃣ FETCH ENTITLEMENTS
+    // ----------------------------
     const entRes = await fetch(
       "https://api.whop.com/api/v2/me/entitlements",
-      {
-        headers: {
-          Authorization: `Bearer ${userAccessToken}`,
-        },
-      }
+      { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
-    const entData = await entRes.json();
-    if (!Array.isArray(entData?.data)) {
-      throw new Error("Invalid entitlements response");
+    const entText = await entRes.text();
+    if (!entText) throw new Error("Empty entitlements response");
+
+    let entData;
+    try {
+      entData = JSON.parse(entText);
+    } catch {
+      throw new Error("Invalid entitlements JSON");
     }
 
-    const hasAccess = entData.data.some(
-      (ent) =>
-        ent?.product?.id &&
-        ALLOWED_PRODUCT_IDS.includes(ent.product.id)
-    );
+    const hasAccess = Array.isArray(entData?.data) &&
+      entData.data.some(
+        (ent) =>
+          ent?.product?.id &&
+          ALLOWED_PRODUCT_IDS.includes(ent.product.id)
+      );
 
     if (!hasAccess) {
       return res.redirect(`${FRONTEND_URL}/login.html`);
     }
 
-    // 4️⃣ SUCCESS → FINALIZE SESSION ON FRONTEND
-    return res.redirect(
-      `${FRONTEND_URL}/index.html?session=success`
-    );
+    // ----------------------------
+    // ✅ SUCCESS → FRONTEND FINALIZES COOKIE
+    // ----------------------------
+    return res.redirect(`${FRONTEND_URL}/index.html?session=success`);
+
   } catch (err) {
-    console.error("🔥 OAuth flow failed:", err);
+    console.error("🔥 OAuth flow failed:", err.message);
     return res.redirect(`${FRONTEND_URL}/login.html`);
   }
 });
