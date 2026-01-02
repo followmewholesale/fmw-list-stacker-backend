@@ -1,15 +1,13 @@
 // ================================
 // FMW List Stacker Backend
 // Whop OAuth + Entitlement Check
-// OPTION A — OWNER BYPASS (FINAL)
+// OPTION A — OWNER BYPASS (FINAL, NODE 18+)
 // ================================
 
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -45,10 +43,12 @@ const ALLOWED_PRODUCT_IDS = [
 // ================================
 // MIDDLEWARE
 // ================================
-app.use(cors({
-  origin: FRONTEND_URL,
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: FRONTEND_URL,
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(cookieParser());
 
@@ -122,13 +122,13 @@ app.get("/api/oauth/callback", async (req, res) => {
         httpOnly: true,
         secure: true,
         sameSite: "None",
-        maxAge: 1000 * 60 * 60 * 24 * 30,
+        maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
       });
 
       return res.redirect(`${FRONTEND_URL}/index.html`);
     }
 
-    // 3️⃣ Fetch entitlements (customers only)
+    // 3️⃣ Fetch entitlements (customers)
     const entRes = await fetch(
       "https://api.whop.com/api/v2/me/entitlements",
       {
