@@ -1,7 +1,7 @@
 // ================================
 // FMW List Stacker Backend
 // Whop OAuth + Entitlement Check
-// FINAL FIX — PERSISTENT ACCESS
+// OPTION A — OWNER BYPASS (FINAL)
 // ================================
 
 require("dotenv").config();
@@ -19,6 +19,7 @@ const PORT = process.env.PORT || 3001;
 // ================================
 const WHOP_CLIENT_ID = process.env.WHOP_CLIENT_ID;
 const WHOP_CLIENT_SECRET = process.env.WHOP_CLIENT_SECRET;
+const OWNER_WHOP_EMAIL = process.env.OWNER_WHOP_EMAIL;
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL || "https://fmw-liststackertool.netlify.app";
@@ -27,13 +28,13 @@ const WHOP_REDIRECT_URI =
   process.env.WHOP_REDIRECT_URI ||
   "https://fmw-list-stacker-backend.onrender.com/api/oauth/callback";
 
-if (!WHOP_CLIENT_ID || !WHOP_CLIENT_SECRET) {
-  console.error("❌ Missing required Whop environment variables");
+if (!WHOP_CLIENT_ID || !WHOP_CLIENT_SECRET || !OWNER_WHOP_EMAIL) {
+  console.error("❌ Missing required environment variables");
   process.exit(1);
 }
 
 // ================================
-// ALLOWED PRODUCTS
+// ALLOWED PAID PRODUCTS
 // ================================
 const ALLOWED_PRODUCT_IDS = [
   "prod_dvtFTdpa6eFyW", // List Stacker Tool
@@ -73,7 +74,7 @@ app.get("/api/oauth/start", (_, res) => {
 });
 
 // ================================
-// 🔁 OAUTH CALLBACK (FINAL FIX)
+// 🔁 OAUTH CALLBACK (OWNER BYPASS)
 // ================================
 app.get("/api/oauth/callback", async (req, res) => {
   const { code } = req.query;
@@ -103,7 +104,31 @@ app.get("/api/oauth/callback", async (req, res) => {
 
     const userAccessToken = tokenData.access_token;
 
-    // 2️⃣ Fetch entitlements
+    // 2️⃣ Fetch user profile
+    const userRes = await fetch("https://api.whop.com/api/v2/me", {
+      headers: {
+        Authorization: `Bearer ${userAccessToken}`,
+      },
+    });
+
+    const userData = await userRes.json();
+    const userEmail = userData?.email?.toLowerCase();
+
+    // ================================
+    // ✅ OWNER BYPASS
+    // ================================
+    if (userEmail === OWNER_WHOP_EMAIL.toLowerCase()) {
+      res.cookie("fmw_access", "1", {
+        httpOnly: true,
+        secure: true,
+        sameSite: "None",
+        maxAge: 1000 * 60 * 60 * 24 * 30,
+      });
+
+      return res.redirect(`${FRONTEND_URL}/index.html`);
+    }
+
+    // 3️⃣ Fetch entitlements (customers only)
     const entRes = await fetch(
       "https://api.whop.com/api/v2/me/entitlements",
       {
@@ -118,7 +143,6 @@ app.get("/api/oauth/callback", async (req, res) => {
       throw new Error("Invalid entitlements response");
     }
 
-    // 3️⃣ Check access
     const hasAccess = entData.data.some(
       (ent) =>
         ent?.product?.id &&
@@ -129,15 +153,14 @@ app.get("/api/oauth/callback", async (req, res) => {
       return res.redirect(`${FRONTEND_URL}/login.html`);
     }
 
-    // 4️⃣ ✅ SET PERSISTENT COOKIE
+    // 4️⃣ Set persistent cookie
     res.cookie("fmw_access", "1", {
       httpOnly: true,
       secure: true,
       sameSite: "None",
-      maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+      maxAge: 1000 * 60 * 60 * 24 * 30,
     });
 
-    // 5️⃣ CLEAN REDIRECT (NO QUERY PARAMS)
     return res.redirect(`${FRONTEND_URL}/index.html`);
   } catch (err) {
     console.error("🔥 OAuth flow failed:", err);
