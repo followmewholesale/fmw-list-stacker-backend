@@ -61,13 +61,14 @@ app.get("/", (_, res) => {
 });
 
 // ================================
-// 🔐 AUTH CHECK (THIS WAS MISSING)
-// Frontend calls this to decide:
-// lock vs unlock
+// 🔐 AUTH CHECK (COOKIE-BASED)
+// Frontend calls this on load
 // ================================
 app.get("/api/auth/check", (req, res) => {
-  const hasAccess = req.cookies?.fmw_access === "1";
-  res.json({ authenticated: hasAccess });
+  if (req.cookies?.fmw_access === "1") {
+    return res.json({ authenticated: true });
+  }
+  return res.json({ authenticated: false });
 });
 
 // ================================
@@ -133,7 +134,7 @@ app.get("/api/oauth/callback", async (req, res) => {
         httpOnly: true,
         secure: true,
         sameSite: "None",
-        maxAge: 1000 * 60 * 60 * 24 * 30,
+        maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
       });
 
       return res.redirect(`${FRONTEND_URL}/index.html`);
