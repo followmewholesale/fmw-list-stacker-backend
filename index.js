@@ -1,7 +1,8 @@
 // ================================
 // FMW List Stacker Backend
 // Whop OAuth + Entitlement Check
-// OPTION A — OWNER BYPASS (FINAL, NODE 18+)
+// OPTION A — OWNER BYPASS (FINAL, STABLE)
+// Node 18+ Native Fetch
 // ================================
 
 require("dotenv").config();
@@ -57,6 +58,16 @@ app.use(cookieParser());
 // ================================
 app.get("/", (_, res) => {
   res.json({ status: "ok", service: "FMW List Stacker Backend" });
+});
+
+// ================================
+// 🔐 AUTH CHECK (THIS WAS MISSING)
+// Frontend calls this to decide:
+// lock vs unlock
+// ================================
+app.get("/api/auth/check", (req, res) => {
+  const hasAccess = req.cookies?.fmw_access === "1";
+  res.json({ authenticated: hasAccess });
 });
 
 // ================================
@@ -122,7 +133,7 @@ app.get("/api/oauth/callback", async (req, res) => {
         httpOnly: true,
         secure: true,
         sameSite: "None",
-        maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+        maxAge: 1000 * 60 * 60 * 24 * 30,
       });
 
       return res.redirect(`${FRONTEND_URL}/index.html`);
