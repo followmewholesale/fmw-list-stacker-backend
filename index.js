@@ -65,10 +65,24 @@ app.get("/", (_, res) => {
 // Frontend calls this on load
 // ================================
 app.get("/api/auth/check", (req, res) => {
-  if (req.cookies?.fmw_access === "1") {
-    return res.json({ authenticated: true });
-  }
-  return res.json({ authenticated: false });
+  const hasAccess = req.cookies?.fmw_access === "1";
+  res.json({ authenticated: hasAccess });
+});
+
+// ================================
+// 🔐 FINALIZE SESSION (FIRST-PARTY COOKIE SET)
+// Called AFTER OAuth redirect
+// ================================
+app.post("/api/auth/session", (req, res) => {
+  res.cookie("fmw_access", "1", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "None",
+    path: "/",
+    maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+  });
+
+  res.json({ ok: true });
 });
 
 // ================================
@@ -130,14 +144,9 @@ app.get("/api/oauth/callback", async (req, res) => {
     // ✅ OWNER BYPASS
     // ================================
     if (userEmail === OWNER_WHOP_EMAIL.toLowerCase()) {
-      res.cookie("fmw_access", "1", {
-        httpOnly: true,
-        secure: true,
-        sameSite: "None",
-        maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
-      });
-
-      return res.redirect(`${FRONTEND_URL}/index.html`);
+      return res.redirect(
+        `${FRONTEND_URL}/index.html?session=success`
+      );
     }
 
     // 3️⃣ Fetch entitlements (customers)
@@ -165,15 +174,10 @@ app.get("/api/oauth/callback", async (req, res) => {
       return res.redirect(`${FRONTEND_URL}/login.html`);
     }
 
-    // 4️⃣ Set persistent cookie
-    res.cookie("fmw_access", "1", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "None",
-      maxAge: 1000 * 60 * 60 * 24 * 30,
-    });
-
-    return res.redirect(`${FRONTEND_URL}/index.html`);
+    // 4️⃣ SUCCESS → FINALIZE SESSION ON FRONTEND
+    return res.redirect(
+      `${FRONTEND_URL}/index.html?session=success`
+    );
   } catch (err) {
     console.error("🔥 OAuth flow failed:", err);
     return res.redirect(`${FRONTEND_URL}/login.html`);
