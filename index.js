@@ -107,7 +107,7 @@ app.get("/api/oauth/callback", async (req, res) => {
     // ----------------------------
     // 1️⃣ TOKEN EXCHANGE (SAFE)
     // ----------------------------
-    const tokenRes = await fetch("https://api.whop.com/v5/oauth/token", {
+    const tokenRes = await fetch("https://api.whop.com/api/v5/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
