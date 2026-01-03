@@ -107,7 +107,7 @@ app.get("/api/oauth/callback", async (req, res) => {
     // ----------------------------
     // 1️⃣ TOKEN EXCHANGE (SAFE)
     // ----------------------------
-    const tokenRes = await fetch("https://api.whop.com/oauth/token", {
+    const tokenRes = await fetch("https://api.whop.com/v5/oauth/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -120,6 +120,8 @@ app.get("/api/oauth/callback", async (req, res) => {
     });
 
     const tokenText = await tokenRes.text();
+    console.log("Token response status:", tokenRes.status);
+    console.log("Token response body:", tokenText);
     if (!tokenText) throw new Error("Empty token response");
 
     let tokenData;
